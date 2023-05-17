@@ -1,0 +1,631 @@
+---
+title: "HIV_DATA"
+output: html_document
+date: "2023-04-28"
+---
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(compareGroups)
+library(caret)
+library(lme4)
+library(lmerTest)
+
+library(nlme)
+
+```
+
+
+
+```{r Data Analysis I}
+
+hiv_data <- read.csv("HealthGymV2_CbdrhDatathon_ART4HIV.csv")
+
+#View initial data summary
+summary(hiv_data)
+
+#Check how many ethnic groups there are
+summary(as.factor(hiv_data$Ethnic))
+
+#Factorise `Gender`
+hiv_data$Gender <- factor(hiv_data$Gender, levels = c(1, 2),
+                          labels = c("Male", "Female"))
+
+#Factorise `Ethnicity`
+hiv_data$Ethnic <- factor(hiv_data$Ethnic, levels = c(1, 2, 3, 4),
+                          labels = c("Asian", "Afro", "Caucasian", "Other"))
+
+
+#Check if the same patient has the same gender and ethnicity
+hiv_data %>% group_by(PatientID) %>%
+  summarise(same_gender = n_distinct(Gender) == 1,
+            same_ethnicity = n_distinct(Ethnic) == 1) -> check_gender_ethnicity
+
+#Check if there are any FALSE values in these columns - there is none
+any(!check_gender_ethnicity$same_gender)
+any(!check_gender_ethnicity$same_ethnicity)
+
+
+
+#Check if `Timestep` sequences from 0 to 59 by each `PatientID`
+check_timepoints <- hiv_data %>%
+  group_by(PatientID) %>%
+  summarise(is_sequence = all(Timestep == 0:59))
+
+#Check if there are any FALSE values in this columns - there is none
+any(!check_timepoints$is_sequence)
+
+
+#Factorise `PatientID`
+hiv_data$PatientID <- factor(hiv_data$PatientID, levels = 0:8915)
+
+
+#Factorise `Base.Drug.Combo`, `Comp..INI`, `Comp..NNRTI`, `Extra.PI`, `Extra.pk.En`, 
+#`VL..M.`, `CD4..M.`, and `Drug..M.`
+hiv_data$Base.Drug.Combo <- factor(hiv_data$Base.Drug.Combo, levels = c(0, 1, 2, 3, 4, 5),
+                          labels = c("FTC + TDF",
+                                     "3TC + ABC",
+                                     "FTC + TAF",
+                                     "DRV + FTC + TDF",
+                                     "FTC + RTVB + TDF",
+                                     "Other"))
+
+hiv_data$Comp..INI <- factor(hiv_data$Comp..INI, levels = c(0, 1, 2, 3),
+                          labels = c("DTG", "RAL", "EVG", "Not Applied"))
+
+hiv_data$Comp..NNRTI <- factor(hiv_data$Comp..NNRTI, levels = c(0, 1, 2, 3),
+                          labels = c("NVP", "EFV", "RPV", "Not Applied"))
+
+hiv_data$Extra.PI <- factor(hiv_data$Extra.PI, levels = c(0, 1, 2, 3, 4, 5),
+                          labels = c("DRV", "RTVB", "LPV", "RTV", "ATV", "Not Applied"))
+
+hiv_data$Extra.pk.En <- factor(hiv_data$Extra.pk.En, levels = c(0, 1),
+                          labels = c("False", "True"))
+
+hiv_data$VL..M. <- factor(hiv_data$VL..M., levels = c(0, 1),
+                          labels = c("False", "True"))
+
+hiv_data$CD4..M. <- factor(hiv_data$CD4..M., levels = c(0, 1),
+                          labels = c("False", "True"))
+
+hiv_data$Drug..M. <- factor(hiv_data$Drug..M., levels = c(0, 1),
+                          labels = c("False", "True"))
+
+
+#Rename some variables
+hiv_data <- hiv_data %>% rename(Rel_CD4 = Rel.CD4,
+                                Base_Drug = Base.Drug.Combo, 
+                                INI = Comp..INI,
+                                NNRTI = Comp..NNRTI,
+                                Extra_PI = Extra.PI,
+                                Extra_pk_En = Extra.pk.En,
+                                VL_M = VL..M.,
+                                CD4_M = CD4..M.,
+                                Drug_M = Drug..M.)
+
+#Examine the data frame again
+summary(hiv_data)
+
+
+#No missing data
+
+```
+
+
+```{r EDA I}
+
+#Compare variables by `Gender`
+compareGroups(Gender ~ VL + CD4 + Rel_CD4 + Ethnic + Base_Drug + INI + NNRTI + 
+                Extra_PI + Extra_pk_En + VL_M + CD4_M + Drug_M, data = hiv_data,
+                     method = c(2, 2, 2, 3, rep(3, 8))) %>% createTable() -> compare_gender
+
+#May be incorrect: p-value < 2.2e-16
+chisq.test(hiv_data$Gender, hiv_data$Ethnic)
+
+#May be incorrect: p-value < 2.2e-16
+chisq.test(hiv_data$Gender, hiv_data$NNRTI)
+
+
+
+#Compare variables by `Ethnic`
+compareGroups(Ethnic ~ VL + CD4 + Rel_CD4 + Gender + Base_Drug + INI + NNRTI + 
+                Extra_PI + Extra_pk_En + VL_M + CD4_M + Drug_M, data = hiv_data,
+                     method = c(2, 2, 2, 3, rep(3, 8))) %>% createTable() -> compare_ethnic
+
+#May be incorrect: p-value < 2.2e-16
+chisq.test(hiv_data$Ethnic, hiv_data$Gender)
+
+#p-value < 2.2e-16
+chisq.test(hiv_data$Ethnic, hiv_data$Base_Drug)
+
+
+#May be incorrect: p-value < 2.2e-16
+chisq.test(hiv_data$Ethnic, hiv_data$INI)
+
+
+#May be incorrect: p-value < 2.2e-16
+chisq.test(hiv_data$Ethnic, hiv_data$NNRTI)
+
+#May be incorrect: p-value < 2.2e-16
+chisq.test(hiv_data$Ethnic, hiv_data$Extra_PI)
+
+#p-value < 2.2e-16
+chisq.test(hiv_data$Ethnic, hiv_data$Extra_pk_En)
+
+#p-value < 2.2e-16
+chisq.test(hiv_data$Ethnic, hiv_data$Drug_M)
+
+```
+
+```{r EDA II}
+
+hiv_patient_diffs <- hiv_data %>%
+  group_by(PatientID, Gender) %>%
+  summarise(delta_VL = first(VL) - last(VL),
+            delta_abs_CD4 = last(CD4) - first(CD4),
+            delta_rel_CD4 = last(Rel_CD4) - first(Rel_CD4),
+            .groups = "drop")
+
+
+compareGroups(Gender ~ delta_VL + delta_abs_CD4 + delta_rel_CD4, data = hiv_patient_diffs,
+                     method = c(2, 2, 2)) %>% createTable() -> compare_gender_differences
+
+#############################################################################################
+
+hiv_patient_mean <- hiv_data %>%
+  group_by(PatientID, Gender) %>%
+  summarise(mean_VL = mean(VL),
+            mean_abs_CD4 = mean(CD4),
+            mean_rel_CD4 = mean(Rel_CD4),
+            .groups = "drop")
+
+
+#Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
+compareGroups(Gender ~ mean_VL + mean_abs_CD4 + mean_rel_CD4, data = hiv_patient_mean,
+                     method = c(2, 2, 2)) %>% createTable() -> compare_gender_means
+
+#############################################################################################
+
+hiv_patient_last <- hiv_data %>%
+  group_by(PatientID, Gender) %>%
+  summarise(last_VL = last(VL),
+            last_abs_CD4 = last(CD4),
+            last_rel_CD4 = last(Rel_CD4),
+            .groups = "drop")
+
+
+#Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
+compareGroups(Gender ~ last_VL + last_abs_CD4 + last_rel_CD4, data = hiv_patient_last,
+                     method = c(2, 2, 2)) %>% createTable() -> compare_gender_last
+
+#############################################################################################
+
+hiv_patient_min <- hiv_data %>%
+  group_by(PatientID, Gender) %>%
+  summarise(min_VL = min(VL),
+            min_abs_CD4 = min(CD4),
+            min_rel_CD4 = min(Rel_CD4),
+            .groups = "drop")
+
+
+compareGroups(Gender ~ min_VL + min_abs_CD4 + min_rel_CD4, data = hiv_patient_min,
+                     method = c(2, 2, 2)) %>% createTable() -> compare_gender_min
+
+
+#############################################################################################
+
+hiv_patient_max <- hiv_data %>%
+  group_by(PatientID, Gender) %>%
+  summarise(max_VL = max(VL),
+            max_abs_CD4 = max(CD4),
+            max_rel_CD4 = max(Rel_CD4),
+            .groups = "drop")
+
+
+compareGroups(Gender ~ max_VL + max_abs_CD4 + max_rel_CD4, data = hiv_patient_max,
+                     method = c(2, 2, 2)) %>% createTable() -> compare_gender_max
+
+
+#############################################################################################
+
+hiv_patient_first <- hiv_data %>%
+  group_by(PatientID, Gender) %>%
+  summarise(first_VL = first(VL),
+            first_abs_CD4 = first(CD4),
+            first_rel_CD4 = first(Rel_CD4),
+            .groups = "drop")
+
+
+compareGroups(Gender ~ first_VL + first_abs_CD4 + first_rel_CD4, data = hiv_patient_first,
+                     method = c(2, 2, 2)) %>% createTable() -> compare_gender_first
+
+
+```
+
+
+```{r Exploratory Modelling I}
+
+null_model <- gls(VL ~ 1, data = hiv_data, method = "ML")
+null_multi <- lme(VL ~ 1, random = ~1|PatientID, data = hiv_data, method ="ML", 
+    control = list(opt = "optim"))
+
+patient_variance <- VarCorr(null_multi)[1] %>% as.numeric()
+residual_variance <- sigma(null_multi)^2
+
+#Compute the VPC for our multilevel null model
+vpc <- patient_variance / (patient_variance + residual_variance) * 100
+
+#4.141595% lmer [...]
+#4.141592% lme
+
+anova(null_multi, null_model)
+
+
+multi_time <- lme(VL ~ Timestep, random = ~1|PatientID, data = hiv_data, 
+                  method ="ML", control = list(opt = "optim"))
+
+gls(VL ~ Timestep, data = hiv_data, method = "ML") -> VL_time_gls
+
+#summary(VL_time)
+
+#VL_time is a better fit
+anova(VL_time_gls, multi_time) 
+
+
+
+multi_time_slope <- lme(VL ~ Timestep, random = ~Timestep|PatientID, 
+                        data = hiv_data, 
+                  method ="ML", control = list(opt = "optim"),
+                  correlation = corAR1(0, form = ~Timestep|PatientID))
+
+
+summary(multi_time_slope)
+
+anova(multi_time, multi_time_slope)
+
+```
+
+
+```{r Exploratory Modelling}
+
+ggplot(data = hiv_data, aes(x = Timestep, y = VL)) + 
+  geom_point() + geom_smooth()
+  
+
+hiv_data %>% group_by(Timestep) %>%
+  summarise(mean_VL = mean(VL)) %>% ggplot(aes(x = Timestep, y = mean_VL)) + 
+  geom_point() + geom_smooth(method = "loess")
+
+
+
+multi_time_quadratic <- lme(VL ~ Timestep + I(Timestep^2), 
+                            random = ~1|PatientID, data = hiv_data, 
+                  method ="ML", control = list(opt = "nlminb"),
+                  correlation = corAR1(0, form = ~1|PatientID))
+
+anova(multi_time, multi_time_quadratic)
+
+
+multi_time_cubic <- lme(VL ~ Timestep + I(Timestep^2) + I(Timestep^3), 
+                            random = ~1|PatientID, data = hiv_data, 
+                  method ="ML", control = list(opt = "nlminb"),
+                  correlation = corAR1(0, form = ~1|PatientID))
+
+
+anova(multi_time, multi_time_cubic)
+
+multi_time_cubic_slope <- lme(VL ~ Timestep + I(Timestep^2) + I(Timestep^3), 
+                            random = ~Timestep|PatientID, data = hiv_data, 
+                  method ="ML", control = list(opt = "optim"),
+                  correlation = corAR1(0, form = ~Timestep|PatientID))
+
+
+
+
+multi_time_cubic_slope_2 <- lme(VL ~ Timestep + I(Timestep^2) + I(Timestep^3), 
+                            random = ~Timestep|PatientID, data = hiv_data, 
+                  method ="ML", control = list(opt = "nlminb"),
+                  correlation = corAR1(0, form = ~Timestep+I(Timestep^2)|PatientID))
+
+
+anova(multi_time_cubic_slope, multi_time_cubic_slope_2)
+
+
+
+```
+
+```{r Data Analysis II}
+
+#Re-level some variables
+hiv_data$Ethnic <- relevel(hiv_data$Ethnic, ref = "Other")
+hiv_data$Base_Drug <- relevel(hiv_data$Base_Drug, ref = "Other")
+hiv_data$INI <- relevel(hiv_data$INI, ref = "Not Applied")
+hiv_data$NNRTI <- relevel(hiv_data$NNRTI, ref = "Not Applied")
+hiv_data$Extra_PI <- relevel(hiv_data$Extra_PI, ref = "Not Applied")
+
+
+hiv_data %>% group_by(PatientID) %>% filter(last(VL) > first(VL))
+
+#Group by medication variables and count occurrences
+combs <- hiv_data %>%
+  group_by(Base_Drug, INI, NNRTI, Extra_PI, Extra_pk_En) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  ungroup() %>%
+  arrange(desc(count))
+
+#Print the existing combinations of values - 135 combinations
+print(combs)
+
+#Nucleoside Reverse Transcriptase Inhibitor (NRTIs):
+#FTC (Emtricitabine)
+#TDF (Tenofovir Disoproxil Fumarate)
+#3TC (Lamivudine)
+#ABC (Abacabir)
+#TAF (Tenofovir alafenamide)
+
+
+#Protease Inhibitor (PI):
+#DRV (Darunavir)
+#RTVB ? (Ritonavir) -> boosted?
+#LPV (Lopinavir)
+#ATV (Atazanavir)
+#RTV -> Pharmacokinetic Enhancer (Ritonavir)
+
+
+#Integrase Strand Transfer Inhibitor (INSTI):
+#EVG (Elvitegravir)
+#DTG (Dolutegravir)
+#RAL (Raltegravir)
+
+
+#Non-Nucleoside Reverse Transcriptase Inhibitor (NNRTI):
+#NVP (Nevirapine)
+#EFV (Efavirenz)
+#RPV (Rilpivirine)
+
+
+#Pharmacokinetic enhancers
+#Extra_pk_En
+
+
+
+#FTC
+#https://clinicalinfo.hiv.gov/en/drugs/emtricitabine/patient
+
+
+#TDF
+#https://clinicalinfo.hiv.gov/en/drugs/elvitegravir-cobicistat-emtricitabine-tenofovir-disoproxil-fumarate/patient
+
+#3TC
+#https://clinicalinfo.hiv.gov/en/drugs/lamivudine-zidovudine/patient
+
+#ABC
+#https://clinicalinfo.hiv.gov/en/drugs/abacavir/patient
+
+#TAF
+#https://clinicalinfo.hiv.gov/en/drugs/darunavir-cobicistat-emtricitabine-tenofovir-alafenamide/patient
+
+#DRV
+#https://clinicalinfo.hiv.gov/en/drugs/darunavir-cobicistat-emtricitabine-tenofovir-alafenamide/patient
+
+#RTVB ? RTV (Ritonavir)
+#https://clinicalinfo.hiv.gov/en/drugs/ritonavir/patient
+
+#########################################################
+#Although ritonavir is FDA-approved for the treatment of HIV infection, it is no longer used for its activity against HIV. Instead, ritonavir (given at low doses) is currently used as a pharmacokinetic enhancer to boost the activity of other HIV medicines. -> Pharmacokinetic Enhancer (ritonavir) <-
+#########################################################
+
+
+#EVG (Elvitegravir)
+#https://clinicalinfo.hiv.gov/en/drugs/elvitegravir-cobicistat-emtricitabine-tenofovir-alafenamide/patient
+
+#DTG (Dolutegravir)
+#https://clinicalinfo.hiv.gov/en/drugs/dolutegravir/patient
+
+#RAL (Raltegravir)
+#https://clinicalinfo.hiv.gov/en/drugs/raltegravir/patient
+
+
+#NVP (Nevirapine)
+#https://clinicalinfo.hiv.gov/en/drugs/nevirapine/patient
+
+#EFV (Efavirenz)
+#https://clinicalinfo.hiv.gov/en/drugs/efavirenz/patient
+
+
+#RTV (Rilpivirine)
+#https://clinicalinfo.hiv.gov/en/drugs/rilpivirine/patient
+
+#LPV (Lopinavir)
+#https://clinicalinfo.hiv.gov/en/drugs/lopinavir-ritonavir/patient
+
+#ATV (Atazanavir)
+#https://clinicalinfo.hiv.gov/en/drugs/atazanavir/patient
+
+#RTV (ritonavir)
+#https://clinicalinfo.hiv.gov/en/drugs/lopinavir-ritonavir/patient
+
+
+```
+
+```{r Data Analysis III}
+
+#Define the medication names for med_nrti
+med_nrti <- c("FTC", "TDF", "3TC", "ABC", "TAF")
+
+#Add NRTI_regimen column and fill with counts
+hiv_data$NRTI_regimen <- rowSums(sapply(med_nrti, function(x) grepl(x, hiv_data$Base_Drug) | grepl(x, hiv_data$INI) | grepl(x, hiv_data$NNRTI) | grepl(x, hiv_data$Extra_PI)))
+
+
+#Define the medication names for med_pi
+med_pi <- c("DRV", "RTVB", "LPV", "ATV", "RTV")
+
+#Add NRTI_regimen column and fill with counts
+hiv_data$PI_regimen <- rowSums(sapply(med_pi, function(x) grepl(x, hiv_data$Base_Drug) | grepl(x, hiv_data$INI) | grepl(x, hiv_data$NNRTI) | grepl(x, hiv_data$Extra_PI)))
+
+
+
+#Define the medication names for med_insti
+med_insti <- c("EVG", "DTG", "RAL")
+
+#Add NRTI_regimen column and fill with counts
+hiv_data$INSTI_regimen <- rowSums(sapply(med_insti, function(x) grepl(x, hiv_data$Base_Drug) | grepl(x, hiv_data$INI) | grepl(x, hiv_data$NNRTI) | grepl(x, hiv_data$Extra_PI)))
+
+
+
+#Define the medication names for med_nnrti
+med_nnrti <- c("NVP", "EFV", "RPV")
+
+#Add NRTI_regimen column and fill with counts
+hiv_data$NNRTI_regimen <- rowSums(sapply(med_nnrti, function(x) grepl(x, hiv_data$Base_Drug) | grepl(x, hiv_data$INI) | grepl(x, hiv_data$NNRTI) | grepl(x, hiv_data$Extra_PI)))
+
+
+
+#Convert the TRUE and FALSE values in `Extra_pk_En` into 1 and 0
+hiv_data$Extra_pk_En_regimen <- ifelse(as.logical(hiv_data$Extra_pk_En), 1, 0)
+
+
+```
+
+```{r Data Analysis IV}
+
+regimen_counts <- hiv_data  %>%
+  count(NRTI_regimen, PI_regimen, INSTI_regimen, NNRTI_regimen, Extra_pk_En_regimen, name = "count") %>%
+  arrange(desc(count))
+
+
+#Create an empty column for overall regimen
+hiv_data$OVERALL_REGIMEN <- ""
+
+#Loop through each row in the data frame
+for (i in 1:nrow(hiv_data)) {
+  #Create a vector of the medication classes with non-zero values
+  meds <- c()
+  if (hiv_data[i, "NRTI_regimen"] > 0) {
+    meds <- c(meds, paste0(hiv_data[i, "NRTI_regimen"], "NRTI"))
+  }
+  if (hiv_data[i, "PI_regimen"] > 0) {
+    meds <- c(meds, paste0(hiv_data[i, "PI_regimen"], "PI"))
+  }
+  if (hiv_data[i, "INSTI_regimen"] > 0) {
+    meds <- c(meds, paste0(hiv_data[i, "INSTI_regimen"], "INSTI"))
+  }
+  if (hiv_data[i, "NNRTI_regimen"] > 0) {
+    meds <- c(meds, paste0(hiv_data[i, "NNRTI_regimen"], "NNRTI"))
+  }
+  if (hiv_data[i, "Extra_pk_En_regimen"] > 0) {
+    meds <- c(meds, paste0(hiv_data[i, "Extra_pk_En_regimen"], "PK_EN"))
+  }
+  
+  #Combine the medication classes into a single string
+  overall_regimen <- paste(meds, collapse = ", ")
+  
+  #Assign the overall regimen to the corresponding row in the data frame
+  hiv_data[i, "OVERALL_REGIMEN"] <- overall_regimen
+}
+
+
+hiv_data$OVERALL_REGIMEN <- ifelse(hiv_data$NRTI_regimen == 0 & hiv_data$PI_regimen == 0 & hiv_data$INSTI_regimen == 0 & hiv_data$NNRTI_regimen == 0 & hiv_data$Extra_pk_En_regimen == 0,
+                                    "Base_Drug:Other",
+                                    hiv_data$OVERALL_REGIMEN)
+
+
+
+hiv_data$OVERALL_REGIMEN <- as.factor(hiv_data$OVERALL_REGIMEN)
+
+# multi_time_cubic_slope <- lme(VL ~ Timestep + I(Timestep^2) + I(Timestep^3) + OVERALL_REGIMEN + Gender + Ethnic, 
+#                             random = ~Timestep|PatientID, data = hiv_data, 
+#                   method ="ML", control = list(opt = "optim"),
+#                   correlation = corAR1(0, form = ~Timestep|PatientID))
+
+
+#Many non-significant variables probably due to small sample sizes
+#summary(multi_time_cubic_slope)
+
+
+hiv_data$REGIMEN_TOP <- hiv_data$OVERALL_REGIMEN
+
+arrange(count(hiv_data, OVERALL_REGIMEN), desc(n))
+
+
+hiv_data <- hiv_data %>% 
+  mutate(REGIMEN_TOP = case_when(
+    OVERALL_REGIMEN %in% head(names(sort(table(OVERALL_REGIMEN), decreasing = TRUE)), 20) ~ as.character(OVERALL_REGIMEN),
+    TRUE ~ "Other"
+  ))
+
+hiv_data$REGIMEN_TOP <- as.factor(hiv_data$REGIMEN_TOP)
+hiv_data$REGIMEN_TOP <- relevel(hiv_data$REGIMEN_TOP, ref = "Base_Drug:Other")
+
+multi_time_cubic_slope_less_cat <- lme(VL ~ Timestep + I(Timestep^2) + I(Timestep^3)  + Gender + Ethnic + REGIMEN_TOP, 
+                            random = ~1|PatientID, data = hiv_data, 
+                  method ="ML", control = list(opt = "nlminb"),
+                  correlation = corAR1(0, form = ~Timestep|PatientID))
+
+
+summary(multi_time_cubic_slope_less_cat)
+#BEST RESULT - BEST MEDICATIONS AT REDUCING THE VIRAL LOAD
+#2NRTI, 1PI, 1NNRTI	     -1965	    194	526021	-10.1	0.0000
+
+
+write_csv(hiv_data, "hiv_data_updated_2_version.csv")
+
+summary(hiv_data)
+
+```
+
+
+```{r Survival Analysis I}
+
+#A type of HIV treatment failure. Virologic failure occurs when antiretroviral therapy (ART) fails to suppress and sustain a person's viral load to less than 200 copies/mL.
+
+#https://clinicalinfo.hiv.gov/en/glossary/virologic-failure#:~:text=A%20type%20of%20HIV%20treatment,and%20poor%20adherence%20to%20ART.
+
+hiv_data$virologic_failure <- ifelse(hiv_data$VL >= 200, 1, 0)
+
+
+library(geepack)
+
+hiv_data$Ethnic <- factor(hiv_data$Ethnic, levels = c("Afro", "Caucasian", "Other"))
+
+#Fit a logistic regression model with an exchangeable correlation structure
+fit_logistic <- geeglm(virologic_failure ~ Timestep + I(Timestep^2) + I(Timestep^3) + Gender + Ethnic + REGIMEN_TOP, data = hiv_data, id = PatientID, family = binomial(), corstr = "ar1")
+
+#Examine the model summary
+summary(fit_logistic)
+
+
+#Get summary table with exponentiated coefficients
+summary_exp_logistic <- exp(summary(fit_logistic)$coefficients)
+summary_exp_logistic <- cbind(summary(fit_logistic)$coefficients[, 1:2], summary_exp_logistic)
+colnames(summary_exp_logistic)[3:4] <- c("exp(coef)", "exp(95% CI)")
+
+print(summary_exp_logistic)
+
+#OR
+#2NRTI, 3PI, 1PK_EN	-1.90e+00	5.11e-01      	0.149	      1.67	1.07e+06	1.00
+
+hiv_data$count_success <- ifelse(hiv_data$virologic_failure == 0, 1, 0)
+hiv_data$count_success <- ave(hiv_data$count_success, hiv_data$PatientID, FUN = cumsum)
+
+#Fit a Poison model with an exchangeable correlation structure
+fit_poison <- geeglm(count_success ~ Timestep + I(Timestep^2) + I(Timestep^3) + Gender + Ethnic + REGIMEN_TOP, 
+                     data = hiv_data, id = PatientID, family = "poisson", corstr = "ar1")
+
+summary(fit_poison)
+
+#Get summary table with exponentiated coefficients
+summary_exp_poison <- exp(summary(fit_poison)$coefficients)
+summary_exp_poison <- cbind(summary(fit_poison)$coefficients[, 1:2], summary_exp_poison)
+colnames(summary_exp_poison)[3:4] <- c("exp(coef)", "exp(95% CI)")
+
+print(summary_exp_poison)
+
+#IRR
+#2NRTI, 3PI, 1PK_EN	9.67e-03	2.17e-03      	1.010      	1.00	3.98e+08	1.00
+
+```
+

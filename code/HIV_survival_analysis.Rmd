@@ -315,11 +315,25 @@ Split dataset to 1) people over 1000 VL at time zero and 2) people below 500 CD4
 ```{r}
 # Get our VL dataset 
 vl_id <- hiv_trimmed %>% filter(vl > 1000 & time == 0) %>% select(id) %>% unique()
-vl <- hiv_trimmed %>% filter(id %in% vl_id$id)
+vl <- hiv_trimmed %>% filter(id %in% vl_id$id) 
 
 # Give outcome
-vl <- vl %>% mutate(event = vl < 1000)
+vl <- vl %>% mutate(event = vl < 1000 | time == 59)
+
+# For each person, mark the event as time
+vl <- vl %>% mutate(event_timing = ifelse(event == TRUE, time, event))
+
+# Now select, each person's first eveng
+vl
 ```
+
+```{r}
+test <- vl %>% as.data.table()
+
+```
+
+
+
 
 Now, transform to format for survival analysis
 

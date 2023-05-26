@@ -16,7 +16,7 @@ Let's start by initialising our analysis. Load some libraries, define some file 
 base_folder <- ("C:/Users/emman/OneDrive/Desktop/DATATHON_TEAM_2")
 
 # Install and load libraries 
-packages <- c('tidyverse', 'data.table', 'survial', 'DataExplorer')
+packages <- c('tidyverse', 'data.table', 'survial', 'DataExplorer', 'survsim', 'broom')
 installed_packages <- packages %in% rownames(installed.packages())
 
 if (any(installed_packages == FALSE)) {
@@ -318,50 +318,88 @@ vl_id <- hiv_trimmed %>% filter(vl > 1000 & time == 0) %>% select(id) %>% unique
 vl <- hiv_trimmed %>% filter(id %in% vl_id$id) 
 
 # Give outcome
-vl <- vl %>% mutate(event = vl < 1000 | time == 59)
+vl <- vl %>% mutate(event = vl < 1000)
 
 # For each person, mark the event as time
-vl <- vl %>% mutate(event_timing = ifelse(event == TRUE, time, event))
+vl <- vl %>% mutate(event_timing = ifelse(event == TRUE, time, 59))
 
+<<<<<<< HEAD
 # Now select, each person's first event
 vl
+=======
+# Now select, each person's first eveng
+vl <- vl %>% as.data.table()
+min_event_id <- vl[, min(event_timing), by = id]
+
+vl <- vl %>% left_join(min_event_id, by = 'id')
+vl_trimmed <- vl %>% filter(time <= V1) %>% select(-event_timing)
 ```
-
-```{r}
-test <- vl %>% as.data.table()
-
-```
-
-
-
-
-Now, transform to format for survival analysis
-
-```{r}
-# Give out
-```
-
-
-
-
-
 
 
 ```{r}
-treatmemt_comb <- c('nrti_regimen', 'other_base', 'pi_regimen', 'ini_regimen', 'nnrti_regimen', 'pk')
+# Getting episodes
+vl_trimmed_episode <- vl_trimmed %>% 
+  mutate(episode = fifelse(
+    (id == lag(id, default = first(id))) &  
+      (nrti_regimen == lag(nrti_regimen, default = first(nrti_regimen))) &
+    (other_base == lag(other_base, default = first(other_base))) &
+    (pi_regimen == lag(pi_regimen, default = first(pi_regimen))) &
+      (ini_regimen == lag(ini_regimen, default = first(ini_regimen))) &
+      (nnrti_regimen == lag(nnrti_regimen, default = first(nnrti_regimen))) &
+      (pk == lag(pk, default = first(pk))), 0, 1),
+    episode_cumu = cumsum(episode))
 
-hiv_trimmed %>% 
-  group_by(id, nrti_regimen, other_base, pi_regimen, ini_regimen, nnrti_regimen, pk) %>% 
-  summarise(start = first(time), end = last(time))
+# Getting start and stops
+splits <- vl_trimmed_episode[, .(start = min(time), time = max(time)), by = .(id, episode_cumu)]
+  
+# Inner join
+vl_subset <- vl_trimmed_episode %>% inner_join(splits, by = c('id', 'time', 'episode_cumu'))
+vl_final <- vl_subset %>% rename(stop = time) %>% select(-episode, -episode_cumu)
+
+vl_final <- vl_final %>% mutate(new_stop = stop + 1)
+vl_final <- vl_final %>% mutate(new_stop = fifelse(new_stop > V1, V1, new_stop))
+vl_final <- vl_final %>% mutate(event = fifelse(new_stop == V1, TRUE, FALSE)) 
+vl_final <- vl_final %>% distinct(id, event, .keep_all = TRUE)
+vl_final
 ```
+
+
 ```{r}
-hiv_trimmed %>% filter(id == 6)
+# test <- vl_final %>% mutate(new_stop = stop + 1)
+# test <- test %>% mutate(new_stop = fifelse(new_stop > V1, V1, new_stop))
+# test <- test %>% mutate(event = fifelse(new_stop == V1, TRUE, FALSE)) 
+# test <- test %>% distinct(id, event, .keep_all = TRUE)
+# 
+# test %>% filter(start == new_stop)
+# test %>% filter(id == 3)
+
 ```
 
 
 
+# Build Cox model!!!!!!! 
+
+```{r}
+# First model
+library(survival)
+library(survsim)
+
+mod1 <- coxph(Surv(start, new_stop, event) ~ relcd4 + gender + ethnic + nrti_regimen + other_base + pi_regimen + ini_regimen + nnrti_regimen + pk + cluster(id), vl_final)
+
+results <- tidy(mod1, conf.int = TRUE, exp = T) 
+results %>% fwrite(file.path(output_path, 'results.csv'))
+>>>>>>> 31f294ca963e7de6c62db905e362f38535f5c953
+```
+
+```{r}
+summary(mod1)
+```
 
 
 
+```{r}
+vl_final #%>% filter(stop == start)
+# vl_final %>% filter(id == 3)
+```
 
 

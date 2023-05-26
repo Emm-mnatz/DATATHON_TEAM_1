@@ -382,8 +382,14 @@ library(survsim)
 
 mod1 <- coxph(Surv(start, new_stop, event) ~ relcd4 + gender + ethnic + nrti_regimen + other_base + pi_regimen + ini_regimen + nnrti_regimen + pk + cluster(id), vl_final)
 
-tidy(mod1, conf.int = TRUE, exp = T) %>% fwrite(file.path(output_path, 'results.csv'))
+results <- tidy(mod1, conf.int = TRUE, exp = T) 
+results %>% fwrite(file.path(output_path, 'results.csv'))
 ```
+
+```{r}
+summary(mod1)
+```
+
 
 
 ```{r}

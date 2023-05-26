@@ -13,7 +13,7 @@ Let's start by initialising our analysis. Load some libraries, define some file 
 ```{r initialisation, results = FALSE}
 
 # Set working directory
-base_folder <- ("C:/Users/Brandon/OneDrive - The University of Melbourne/Desktop/Health Data Science/Datathon/DATATHON_TEAM_2")
+base_folder <- ("C:/Users/emman/OneDrive/Desktop/DATATHON_TEAM_2")
 
 # Install and load libraries 
 packages <- c('tidyverse', 'data.table', 'survial', 'DataExplorer')
@@ -323,7 +323,7 @@ vl <- vl %>% mutate(event = vl < 1000 | time == 59)
 # For each person, mark the event as time
 vl <- vl %>% mutate(event_timing = ifelse(event == TRUE, time, event))
 
-# Now select, each person's first eveng
+# Now select, each person's first event
 vl
 ```
 

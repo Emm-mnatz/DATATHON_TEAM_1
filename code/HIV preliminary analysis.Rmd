@@ -106,6 +106,8 @@ summary(hiv_data)
 #There are 1069 rows where patients took only the "Other" base drug
 
 ```
+
+
 ```{r Data Processing II}
 
 #Re-level some variables

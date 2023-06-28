@@ -10,7 +10,7 @@ date: "2023-05-25"
 ```{r setup, include=FALSE}
 # Set working directory
 knitr::opts_chunk$set(
-  root.dir = "C:/Users/Brandon/OneDrive - The University of Melbourne/Desktop/Health Data Science/Datathon/DATATHON_TEAM_2"
+  root.dir = r"{C:\Users\brand\OneDrive\Desktop\Health Data Science\Datathon_team_2}"
   )
 ```
 
@@ -30,15 +30,15 @@ if (any(installed_packages == FALSE)) {
 invisible(lapply(packages, require, character.only = TRUE))
 
 # Set file paths  
-if (!dir.exists('output')) dir.create(file.path(getwd(), 'output'))
+if (!dir.exists('output')) dir.create(file.path('output'))
 
 # Read HIV data
-hiv <- file.path(getwd(), 'input', 'HealthGymV2_CbdrhDatathon_ART4HIV.csv') %>% fread()
+hiv <- file.path(r'{C:\Users\brand\OneDrive\Desktop\Health Data Science\Datathon_team_2\input/HealthGymV2_CbdrhDatathon_ART4HIV.csv}') %>% fread()
 ```
 
 Let's have a look at our dataset. 
 
-```{r initial look, tidy = TRUE}
+```{r initial look}
 # Quick look! 
 glimpse(hiv)
 summary(hiv)
@@ -76,19 +76,12 @@ Let's have a look if our participants have consistent ethnicity and sex.
 
 ```{r ethnicity and sex, results = FALSE}
 # Check if participants have same ethnicity and sex
-hiv[, .(nunique_gender = uniqueN(gender), nunique_ethn = uniqueN(ethnic)), by = id]
+hiv[, .(nunique_gender = uniqueN(gender), nunique_ethn = uniqueN(ethnic)), by = id][, .(max_gender = max(nunique_gender), max_ethn = max(nunique_ethn))]
 ```
 
 Just do some quick automated EDA. 
 
 ```{r}
-# Automated EDA
-# hiv %>% create_report(
-#   #output_file = paste("Report", format(Sys.time(), "%d-%m-%Y %H:%M:%S %Z"), sep = ' - '),
-#   report_title = 'EDA Report - HIV Dataset',
-#   output_dir = output_path
-# )
-
 # Plotting distribution of discrete variables
 hiv %>% plot_bar(by = 'ethnic', nrow = 4, title = 'EDA - Ethnicity')
 hiv %>% plot_bar(by = 'gender', nrow = 4, title = 'EDA - Gender')
@@ -98,10 +91,10 @@ hiv %>% plot_bar(by = 'base_drug_comb', nrow = 4, title = 'EDA - Drug Combo')
 Let's move forward to analysis - let's relevel some variables for later analysis.
 
 ```{r}
-#Re-level some variables
+# Re-level some variables
 hiv$gender <- relevel(hiv$gender, ref = "male")
-hiv$ethnic <- relevel(hiv$ethnic, ref = "other")
-hiv$base_drug_comb <- relevel(hiv$base_drug_comb, ref = "other")
+hiv$ethnic <- relevel(hiv$ethnic, ref = "caucasian")
+hiv$base_drug_comb <- relevel(hiv$base_drug_comb, ref = "ftc_tdf")
 hiv$ini <- relevel(hiv$ini, ref = "not_applied")
 hiv$nnrti <- relevel(hiv$nnrti, ref = "not_applied")
 hiv$pi <- relevel(hiv$pi, ref = "not_applied")
@@ -147,88 +140,93 @@ hiv_trans <- hiv_trans %>%
          pi_not_applied = fifelse(grepl('not_applied', pi), 1, 0))
 ```
 
-Now, concatenate the drugs row-wise 
+Let's extract the NTRI regimen from the base drug combination. 
 
 ```{r}
-# Concatenate string row-wise
-hiv_trans$nrti_regimen <- apply(hiv_trans[, c("ftc", "tdf", "tc3", "abc", "taf")], 1, function(row) {
+# Extract NRTI regimen
+hiv_trans <- hiv_trans %>% 
+  mutate(nrti_regimen = case_when(base_drug_comb %like% '3tc' ~ '3tc + abc',
+                                  base_drug_comb %like% 'taf' ~ 'ftc + taf',
+                                  base_drug_comb %like% 'tdf' ~ 'ftc + tdf',
+                                  .default = 'none'))
+```
+
+Let's extract the PI regimen - regardless whether it's administered as part of the base regimen or as extra PI. 
+
+```{r}
+# Extract PI regimen
+pi_cols <- c("drv_base", "rtvb_base", "drv_extra_pi", "rtvb_extra_pi", "lpv", "atv", "rtv")
+
+hiv_trans <- hiv_trans %>% 
+  mutate(pi_regimen = apply(hiv_trans[, ..pi_cols], 1, function(row) {
+    
+    # Get column names with 1 values
+    pi_columns <- names(row[row == 1])
+    
+    # Replace "DRV_base" with "DRV" in the column names
+    pi_columns <- gsub("drv_base", "drv", pi_columns)
+    
+    # Replace "DRV_extra_pi" with "DRV" in the column names
+    pi_columns <- gsub("drv_extra_pi", "drv", pi_columns)
+    
+    # Replace "RTVB_base" with "RTVB" in the column names
+    pi_columns <- gsub("rtvb_base", "rtvb", pi_columns)
+    
+    # Replace "RTVB_extra_pi" with "RTVB" in the column names
+    pi_columns <- gsub("rtvb_extra_pi", "rtvb", pi_columns)
+    
+    # De-duplicate pi_columns (as DRV and RTVB may appear more than once)
+    pi_columns <- unique(pi_columns)
+    
+    # Concatenate column names with pluses in between
+    regimen <- paste(pi_columns, collapse = " + ")
+    
+    #Return the PI regimen
+    ifelse(regimen == "", "none", regimen)
+  }))
+```
+
+Let's extract the INI regimen 
+
+```{r}
+# Extract INI regimen
+ini_cols <- c("evg", "dtg", "ral")
+
+hiv_trans <- hiv_trans %>% 
+  mutate(ini_regimen = apply(hiv_trans[, ..ini_cols], 1, function(row) {
+      
+    # Get column names with 1 values
+    ini_columns <- names(row[row == 1])
+    
+    # Concatenate column names with pluses in between
+    regimen <- paste(ini_columns, collapse = " + ")
+    
+    # Return the INI regimen
+    ifelse(regimen == "", "none", regimen)
+  }))
+```
+
+Let;s extract tge NNRTI regimen.
+
+```{r}
+# Extract NNRTI regimen
+nntri_cols <- c("nvp", "efv", "rpv")
+
+hiv_trans <- hiv_trans %>% 
+  mutate(nntri_regimen = apply(hiv_trans[, ..nntri_cols], 1, function(row) {
   
-  #Get column names with 1 values
-  nrti_columns <- names(row[row == 1])
-  
-  #Replace "TC3" with "3TC" in the column names
-  nrti_columns <- gsub("tc3", "3tc", nrti_columns)
-  
-  #Concatenate column names with pluses in between
-  regimen <- paste(nrti_columns, collapse = " + ")
-  
-  #Return the NRTI regimen
-  ifelse(regimen == "", "none", regimen)
-})
+    #Get column names with 1 values
+    nnrti_columns <- names(row[row == 1])
+    
+    #Concatenate column names with pluses in between
+    regimen <- paste(nnrti_columns, collapse = " + ")
+    
+    #Return the NRTI regimen
+    ifelse(regimen == "", "none", regimen)
+  }))
 ```
 
 
-```{r}
-#Create a new variable `PI_Regimen` based on specific columns
-hiv_trans$pi_regimen <- apply(hiv_trans[, c("drv_base", "rtvb_base", "drv_extra_pi", "rtvb_extra_pi", "lpv", "atv", "rtv")], 1, function(row) {
-  
-  #Get column names with 1 values
-  pi_columns <- names(row[row == 1])
-  
-  #Replace "DRV_base" with "DRV" in the column names
-  pi_columns <- gsub("drv_base", "drv", pi_columns)
-  
-  #Replace "DRV_extra_pi" with "DRV" in the column names
-  pi_columns <- gsub("drv_extra_pi", "drv", pi_columns)
-  
-  #Replace "RTVB_base" with "RTVB" in the column names
-  pi_columns <- gsub("rtvb_base", "rtvb", pi_columns)
-  
-  #Replace "RTVB_extra_pi" with "RTVB" in the column names
-  pi_columns <- gsub("rtvb_extra_pi", "rtvb", pi_columns)
-  
-  #De-duplicate pi_columns (as DRV and RTVB may appear more than once)
-  pi_columns <- unique(pi_columns)
-  
-  #Concatenate column names with pluses in between
-  regimen <- paste(pi_columns, collapse = " + ")
-  
-  #Return the NRTI regimen
-  ifelse(regimen == "", "none", regimen)
-})
-```
-
-```{r}
-#Create a new variable `INSTI_regimen` based on specific columns
-hiv_trans$ini_regimen <- apply(hiv_trans[, c("evg", "dtg", "ral")], 1, function(row) {
-  
-  #Get column names with 1 values
-  insti_columns <- names(row[row == 1])
-  
-  #Concatenate column names with pluses in between
-  regimen <- paste(insti_columns, collapse = " + ")
-  
-  #Return the NRTI regimen
-  ifelse(regimen == "", "none", regimen)
-  
-})
-```
-
-```{r}
-#Create a new variable `NNRTI_regimen` based on specific columns
-hiv_trans$nnrti_regimen <- apply(hiv_trans[, c("nvp", "efv", "rpv")], 1, function(row) {
-  
-  #Get column names with 1 values
-  nnrti_columns <- names(row[row == 1])
-  
-  #Concatenate column names with pluses in between
-  regimen <- paste(nnrti_columns, collapse = " + ")
-  
-  #Return the NRTI regimen
-  ifelse(regimen == "", "none", regimen)
-  
-})
-```
 
 ```{r}
 hiv_cleaned <- hiv_trans %>% as.data.frame()
@@ -240,7 +238,7 @@ other_columns <- setdiff(names(hiv_cleaned), c("pk", "id", "time"))
 hiv_cleaned[c(other_columns, c("pk", "id", "time"))] -> hiv_cleaned
   
 #Save the processed data frame
-fwrite(hiv_cleaned, file.path(output_path, "processed_data_hiv.csv"))
+# fwrite(hiv_cleaned, file.path(output_path, "processed_data_hiv.csv"))
 ```
 
 Factorise the cleaned dataset.

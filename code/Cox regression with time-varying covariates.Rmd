@@ -20,7 +20,7 @@ Without further ado, let's load in the necessary packages and read in the data.
 
 ```{r initialisation, include = TRUE}
 # Install and load libraries 
-packages <- c('tidyverse', 'data.table', 'survial', 'DataExplorer', 'survsim', 'broom')
+packages <- c('tidyverse', 'data.table', 'survival', 'DataExplorer', 'survsim', 'broom')
 installed_packages <- packages %in% rownames(installed.packages())
 
 if (any(installed_packages == FALSE)) {
@@ -245,6 +245,7 @@ Factorise the non-factor columns of the cleaned dataset.
 ```{r}
 # Factorise columns and level based on decreasing frequency
 factor_cols <- hiv_cleaned %>% select(nrti_regimen:drug_m) %>% names()
+hiv_cleaned[, (factor_cols) := lapply(.SD, factor), .SDcols = factor_cols]
 hiv_cleaned[, (factor_cols) := lapply(.SD, fct_infreq), .SDcols = factor_cols]
 
 str(hiv_cleaned)
@@ -380,45 +381,38 @@ cd4_final <- cd4_final[, event := fifelse(stop == first_event, TRUE, FALSE)] %>%
   distinct(id, event, .keep_all = TRUE)
 ```
 
-
-```{r}
-# test <- vl_final %>% mutate(new_stop = stop + 1)
-# test <- test %>% mutate(new_stop = fifelse(new_stop > V1, V1, new_stop))
-# test <- test %>% mutate(event = fifelse(new_stop == V1, TRUE, FALSE)) 
-# test <- test %>% distinct(id, event, .keep_all = TRUE)
-# 
-# test %>% filter(start == new_stop)
-# test %>% filter(id == 3)
-
-```
-
-
-
 # Build Cox model!!!!!!! 
 
+Let's build time-varying Cox model starting with Viral load model.
+
 ```{r}
-# First model
-library(survival)
-library(survsim)
+# Build time-varying Cox model for VL
+vl_mod <- coxph(Surv(start, stop, event) ~ relcd4 + gender + ethnic + nrti_regimen + pi_regimen + ini_regimen + nnrti_regimen + pk + cluster(id), data = vl_final)
 
-mod1 <- coxph(Surv(start, new_stop, event) ~ relcd4 + gender + ethnic + nrti_regimen + other_base + pi_regimen + ini_regimen + nnrti_regimen + pk + cluster(id), vl_final)
+# Display results
+results <- tidy(vl_mod, conf.int = TRUE, exp = T) 
+results %>% fwrite(file.path('output', 'vl_results.csv'))
+summary(vl_mod)
 
-results <- tidy(mod1, conf.int = TRUE, exp = T) 
-results %>% fwrite(file.path(output_path, 'results.csv'))
+sjPlot::plot_model(vl_mod)
+ggsave(file.path('output', 'vl_results_image.png'))
+
 results
 ```
 
-```{r}
-summary(mod1)
-```
-
-
+Let's build time-varying Cox model starting with CD4 model.
 
 ```{r}
-library(sjPlot)
+# Build time-varying Cox model for CD4
+cd4_mod <- coxph(Surv(start, stop, event) ~ vl + gender + ethnic + nrti_regimen + pi_regimen + ini_regimen + nnrti_regimen + pk + cluster(id), data = cd4_final)
 
-plot_model(mod1)
-ggsave(file.path(output_path, 'output', 'results_image.png'))
+# Display results
+results <- tidy(cd4_mod, conf.int = TRUE, exp = T) 
+results %>% fwrite(file.path('output', 'cd4_results.csv'))
+summary(cd4_mod)
+
+sjPlot::plot_model(cd4_mod)
+ggsave(file.path('output', 'cd4_results_image.png'))
+
+results
 ```
-
-

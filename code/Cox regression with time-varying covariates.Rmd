@@ -260,58 +260,124 @@ npatient_regimen_change <- hiv_cleaned[, .N, by = .(id, nrti_regimen, pi_regimen
 
 # Total number of patients
 npatients <- hiv_cleaned[, uniqueN(id)]
+
+c('total unique patients' = npatients, 'patients with regimen changes' = npatient_regimen_change)
 ```
 
 Out of `r npatients`, `r npatient_regimen_change` changed regiments, representing `r npatient_regimen_change / (npatients) * 100 %>% round(2)`% of the cohort
 
-Split dataset to 1) people over 1000 VL at time zero and 2) people below 500 CD4 at time zero
-
+As we are investigating both viral load and immune recovery outcomes, split dataset to 1) people over 1000 VL at time zero and 2) people below 500 CD4 at time zero.
 
 ```{r}
-# Get our VL dataset 
-vl_id <- hiv_trimmed %>% filter(vl > 1000 & time == 0) %>% select(id) %>% unique()
-vl <- hiv_trimmed %>% filter(id %in% vl_id$id) 
+# Get our VL dataset by getting unique patients who started with >1000 VL at time 0
+vl_id <- hiv_cleaned[vl > 1000 & time == 0, unique(id)]
+vl <- hiv_cleaned[id %in% vl_id]
 
-# Give outcome
-vl <- vl %>% mutate(event = vl < 1000)
-
-# For each person, mark the event as time
-vl <- vl %>% mutate(event_timing = ifelse(event == TRUE, time, 59))
-
-# Now select, each person's first eveng
-vl <- vl %>% as.data.table()
-min_event_id <- vl[, min(event_timing), by = id]
-
-vl <- vl %>% left_join(min_event_id, by = 'id')
-vl_trimmed <- vl %>% filter(time <= V1) %>% select(-event_timing)
+# Get our CD4 dataset by getting unique patients who started with <500 CD4 at time 0
+cd4_id <- hiv_cleaned[cd4 < 500 & time == 0, unique(id)]
+cd4 <- hiv_cleaned[id %in% cd4_id]
 ```
 
+Now we want to restrict the dataset so the dataset only contains rows for each patient up to their censor/first_event timepoint. 
 
 ```{r}
-# Getting episodes
-vl_trimmed_episode <- vl_trimmed %>% 
-  mutate(episode = fifelse(
-    (id == lag(id, default = first(id))) &  
-      (nrti_regimen == lag(nrti_regimen, default = first(nrti_regimen))) &
-    (other_base == lag(other_base, default = first(other_base))) &
-    (pi_regimen == lag(pi_regimen, default = first(pi_regimen))) &
-      (ini_regimen == lag(ini_regimen, default = first(ini_regimen))) &
-      (nnrti_regimen == lag(nnrti_regimen, default = first(nnrti_regimen))) &
-      (pk == lag(pk, default = first(pk))), 0, 1),
-    episode_cumu = cumsum(episode))
+# Give outcomes and mark timing for when the event occurred
+vl[, `:=`(event = vl <= 1000, event_timing = ifelse(vl <= 1000, time, 59))]
+cd4[, `:=`(event = cd4 >= 500, event_timing = ifelse(cd4 >= 500, time, 59))]
 
-# Getting start and stops
-splits <- vl_trimmed_episode[, .(start = min(time), time = max(time)), by = .(id, episode_cumu)]
-  
-# Inner join
-vl_subset <- vl_trimmed_episode %>% inner_join(splits, by = c('id', 'time', 'episode_cumu'))
-vl_final <- vl_subset %>% rename(stop = time) %>% select(-episode, -episode_cumu)
+# Now for each patient, grab their first event timing
+vl_first_event <- vl[, .(first_event = min(event_timing)), by = id]
+cd4_first_event <- cd4[, .(first_event = min(event_timing)), by = id]
 
-vl_final <- vl_final %>% mutate(new_stop = stop + 1)
-vl_final <- vl_final %>% mutate(new_stop = fifelse(new_stop > V1, V1, new_stop))
-vl_final <- vl_final %>% mutate(event = fifelse(new_stop == V1, TRUE, FALSE)) 
-vl_final <- vl_final %>% distinct(id, event, .keep_all = TRUE)
-vl_final
+# Create trimmed dataset
+vl_trim <- vl %>% 
+  left_join(vl_first_event, by = 'id') %>% 
+  filter(time <= first_event) %>% 
+  select(-event_timing)
+
+cd4_trim <- cd4 %>% 
+  left_join(cd4_first_event, by = 'id') %>% 
+  filter(time <= first_event) %>% 
+  select(-event_timing)
+```
+
+Create an input dataset for modelling involving start-end date for each patient and their treatment regimen. For details, see comments in code below.
+
+```{r}
+# Get distinct episodes for each patient
+# `episode_cumu` column only stays the same if there are no patient changes nor treatment regimen changes  
+vl_episode <- vl_trim %>% 
+  mutate(episode = fifelse(id == lag(id, default = first(id)) 
+                           & nrti_regimen == lag(nrti_regimen, default = first(nrti_regimen))
+                           & pi_regimen == lag(pi_regimen, default = first(pi_regimen))
+                           & ini_regimen == lag(ini_regimen, default = first(ini_regimen))
+                           & nnrti_regimen == lag(nnrti_regimen, default = first(nnrti_regimen))
+                           & pk == lag(pk, default = first(pk)),
+                           0, 1),
+         episode_cumu = cumsum(episode)
+         )
+
+# Getting start and stop times for each independent episode
+splits <- vl_episode[, .(start = min(time), time = max(time)), by = .(id, episode_cumu)]
+
+# Inner join so that everyone only has rows indicating the start and end timepoint of each distinct episode
+vl_final <- vl_episode %>% 
+  inner_join(splits, by = c('id', 'time', 'episode_cumu')) %>% 
+  mutate(stop = time) %>% 
+  select(-episode, -episode_cumu)
+
+# Since current censoring timepoint is the timepoint immediate prior to change, 
+# we want to increment current stop timepoint by 1 to indicate the actual censoring timepoint 
+vl_final[, stop := stop + 1]
+
+# Of course, we don't want to increment the ultimate censoring timepoint at which
+# people reached the event or past timepoint 59.
+# Thus we limit max stop point to the timepoint of ultimate patient censoring 
+vl_final[, stop := fifelse(stop > first_event, first_event, stop)]
+
+# Re-create event flag to align against new stop date
+# See patient ID 2 as example
+# Patient 2 reached <1000 VL at time 37
+# However at the same timepoint they also changed PI regimens
+# Now, does their regimen change count as a line?
+# It shouldn't since we're assuming that he reached <1000 VL at timepoint 37
+# before he changed medication 
+# Thus we'd keep his first regimen but discard his second
+# This is the purpose of the code below for creating new flag then dedupe
+vl_final <- vl_final[, event := fifelse(stop == first_event, TRUE, FALSE)] %>% 
+  distinct(id, event, .keep_all = TRUE)
+```
+
+Repeat the same process for CD4 model. 
+
+```{r}
+# For more details see code above 
+cd4_episode <- cd4_trim %>% 
+  mutate(episode = fifelse(id == lag(id, default = first(id)) 
+                           & nrti_regimen == lag(nrti_regimen, default = first(nrti_regimen))
+                           & pi_regimen == lag(pi_regimen, default = first(pi_regimen))
+                           & ini_regimen == lag(ini_regimen, default = first(ini_regimen))
+                           & nnrti_regimen == lag(nnrti_regimen, default = first(nnrti_regimen))
+                           & pk == lag(pk, default = first(pk)),
+                           0, 1),
+         episode_cumu = cumsum(episode)
+         )
+
+
+splits <- cd4_episode[, .(start = min(time), time = max(time)), by = .(id, episode_cumu)]
+
+
+cd4_final <- cd4_episode %>% 
+  inner_join(splits, by = c('id', 'time', 'episode_cumu')) %>% 
+  mutate(stop = time) %>% 
+  select(-episode, -episode_cumu)
+
+cd4_final[, stop := stop + 1]
+
+cd4_final[, stop := fifelse(stop > first_event, first_event, stop)]
+
+cd4_final <- cd4_final[, event := fifelse(stop == first_event, TRUE, FALSE)] %>% 
+  distinct(id, event, .keep_all = TRUE)
 ```
 
 

@@ -148,7 +148,7 @@ hiv_trans <- hiv_trans %>%
   mutate(nrti_regimen = case_when(base_drug_comb %like% '3tc' ~ '3tc + abc',
                                   base_drug_comb %like% 'taf' ~ 'ftc + taf',
                                   base_drug_comb %like% 'tdf' ~ 'ftc + tdf',
-                                  .default = 'none'))
+                                  .default = 'other'))
 ```
 
 Let's extract the PI regimen - regardless whether it's administered as part of the base regimen or as extra PI. 
@@ -206,14 +206,14 @@ hiv_trans <- hiv_trans %>%
   }))
 ```
 
-Let;s extract tge NNRTI regimen.
+Let's extract the NNRTI regimen.
 
 ```{r}
 # Extract NNRTI regimen
-nntri_cols <- c("nvp", "efv", "rpv")
+nnrti_cols <- c("nvp", "efv", "rpv")
 
 hiv_trans <- hiv_trans %>% 
-  mutate(nntri_regimen = apply(hiv_trans[, ..nntri_cols], 1, function(row) {
+  mutate(nnrti_regimen = apply(hiv_trans[, ..nnrti_cols], 1, function(row) {
   
     #Get column names with 1 values
     nnrti_columns <- names(row[row == 1])
@@ -226,83 +226,42 @@ hiv_trans <- hiv_trans %>%
   }))
 ```
 
-
+Now, we want to extract all the useful columns that we'll use for the analysis. 
 
 ```{r}
-hiv_cleaned <- hiv_trans %>% as.data.frame()
+# Extract useful columns
+cols_keep = c('id', 'time', 'vl', 'cd4', 'relcd4', 'gender', 'ethnic', 
+              'nrti_regimen', 'pi_regimen', 'ini_regimen', 'nnrti_regimen', 'pk', 
+              'vl_m', 'cd4_m', 'drug_m')
 
-#Change the order of the columns
-other_columns <- setdiff(names(hiv_cleaned), c("pk", "id", "time"))
+hiv_cleaned <- hiv_trans[, ..cols_keep]
 
-#Rearrange the columns
-hiv_cleaned[c(other_columns, c("pk", "id", "time"))] -> hiv_cleaned
-  
-#Save the processed data frame
-# fwrite(hiv_cleaned, file.path(output_path, "processed_data_hiv.csv"))
+# Save the processed data frame
+fwrite(hiv_cleaned, file.path('output', "processed_data_hiv.csv"))
 ```
 
-Factorise the cleaned dataset.
+Factorise the non-factor columns of the cleaned dataset.
 
 ```{r}
-# Subset the columns we'd like to keep
-cols_keep = c('vl', 'cd4', 'relcd4', 'gender', 'ethnic', 
-              'nrti_regimen', 'other_base', 'pi_regimen', 'ini_regimen', 'nnrti_regimen', 'pk',
-              'id', 'time', 'vl_m', 'cd4_m', 'drug_m')
+# Factorise columns and level based on decreasing frequency
+factor_cols <- hiv_cleaned %>% select(nrti_regimen:drug_m) %>% names()
+hiv_cleaned[, (factor_cols) := lapply(.SD, fct_infreq), .SDcols = factor_cols]
 
-hiv_trimmed <- hiv_cleaned[, cols_keep] %>% as.data.table()
-
-# Factorise certain columns and give sensible levels
-factor_cols <- hiv_trimmed %>% select(nrti_regimen:pk) %>% names()
-hiv_trimmed[, (factor_cols) := lapply(.SD, as.factor), .SDcols = factor_cols]
-
-str(hiv_trimmed)
-```
-
-```{r}
-# Refactor variable
-hiv_trimmed$nrti_regimen <- fct_relevel(
-  hiv_trimmed$nrti_regimen, hiv_trimmed$nrti_regimen %>% table() %>% sort(decreasing = TRUE) %>% names()
-  )
-
-hiv_trimmed$other_base <- fct_relevel(
-  hiv_trimmed$other_base, hiv_trimmed$other_base %>% table() %>% sort(decreasing = TRUE) %>% names()
-  )
-
-hiv_trimmed$pi_regimen <- fct_relevel(
-  hiv_trimmed$pi_regimen, hiv_trimmed$pi_regimen %>% table() %>% sort(decreasing = TRUE) %>% names()
-  )
-
-hiv_trimmed$ini_regimen <- fct_relevel(
-  hiv_trimmed$ini_regimen, hiv_trimmed$ini_regimen %>% table() %>% sort(decreasing = TRUE) %>% names()
-  )
-
-hiv_trimmed$nnrti_regimen <- fct_relevel(
-  hiv_trimmed$nnrti_regimen, hiv_trimmed$nnrti_regimen %>% table() %>% sort(decreasing = TRUE) %>% names()
-  )
-
-hiv_trimmed$pk <- fct_relevel(
-  hiv_trimmed$pk, hiv_trimmed$pk %>% table() %>% sort(decreasing = TRUE) %>% names()
-  )
-
-str(hiv_trimmed)
+str(hiv_cleaned)
 ```
 
 # Start analysis proper
 
-How many people change their reigmen? 
+Let's first look at how many people changed their regimen? 
 
 ```{r}
 # How many patients change their regimen at least once?
-npatient_regimen_change <- hiv_trimmed[, .N, by = .(id, nrti_regimen, other_base, pi_regimen, ini_regimen, nnrti_regimen, pk)] %>% 
-  group_by(id) %>% 
-  summarise(n_regimens = n()) %>% 
-  filter(n_regimens > 1) %>% 
-  nrow()
+npatient_regimen_change <- hiv_cleaned[, .N, by = .(id, nrti_regimen, pi_regimen, ini_regimen, nnrti_regimen, pk)][, .(n_regimens = .N), by = id][n_regimens > 1, .N]
 
-npatients <- uniqueN(hiv_trimmed$id)
-
-npatients; npatient_regimen_change
+# Total number of patients
+npatients <- hiv_cleaned[, uniqueN(id)]
 ```
+
 Out of `r npatients`, `r npatient_regimen_change` changed regiments, representing `r npatient_regimen_change / (npatients) * 100 %>% round(2)`% of the cohort
 
 Split dataset to 1) people over 1000 VL at time zero and 2) people below 500 CD4 at time zero

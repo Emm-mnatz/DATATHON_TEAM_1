@@ -12,6 +12,7 @@ date: "2023-05-25"
 knitr::opts_chunk$set(
   root.dir = r"{C:\Users\brand\OneDrive\Desktop\Health Data Science\Datathon_team_2}"
   )
+
 ```
 
 In this markdown, I'll demonstrate how to clean the data for a Cox regression with time-varying covarites. The data cleaning is arguably the most difficult part of the the analysis and we'll make plenty use of `data.table`'s convenient group-wise operations! I'll also demonstrate the process of fitting the Cox regression model and checking that if the proportional hazards assumption of the model is met. 
@@ -20,7 +21,8 @@ Without further ado, let's load in the necessary packages and read in the data.
 
 ```{r initialisation, include = TRUE}
 # Install and load libraries 
-packages <- c('tidyverse', 'data.table', 'survival', 'DataExplorer', 'survsim', 'broom')
+packages <- c('tidyverse', 'data.table', 'survival', 'DataExplorer', 'survsim', 'broom', 'survminer')
+
 installed_packages <- packages %in% rownames(installed.packages())
 
 if (any(installed_packages == FALSE)) {
@@ -33,7 +35,7 @@ invisible(lapply(packages, require, character.only = TRUE))
 if (!dir.exists('output')) dir.create(file.path('output'))
 
 # Read HIV data
-hiv <- file.path(r'{C:\Users\brand\OneDrive\Desktop\Health Data Science\Datathon_team_2\input/HealthGymV2_CbdrhDatathon_ART4HIV.csv}') %>% fread()
+hiv <- file.path(r'{../input/HealthGymV2_CbdrhDatathon_ART4HIV.csv}') %>% fread()
 ```
 
 Let's have a look at our dataset. 
@@ -398,6 +400,23 @@ sjPlot::plot_model(vl_mod)
 ggsave(file.path('output', 'vl_results_image.png'))
 
 results
+
+vl_mod
+```
+
+It's seems like the cox proportional hazards assumption does not hold for the VL-model:
+
+```{r}
+
+ggcoxzph((cox.zph(vl_mod)))[1]
+ggcoxzph((cox.zph(vl_mod)))[2]
+ggcoxzph((cox.zph(vl_mod)))[3]
+ggcoxzph((cox.zph(vl_mod)))[4]
+ggcoxzph((cox.zph(vl_mod)))[5]
+ggcoxzph((cox.zph(vl_mod)))[6]
+ggcoxzph((cox.zph(vl_mod)))[7]
+ggcoxzph((cox.zph(vl_mod)))[8]
+
 ```
 
 Let's build time-varying Cox model starting with CD4 model.
@@ -416,3 +435,21 @@ ggsave(file.path('output', 'cd4_results_image.png'))
 
 results
 ```
+
+
+It's seems like the cox proportional hazards assumption does not hold also for the CD4-model:
+
+```{r}
+
+ggcoxzph((cox.zph(cd4_mod)))[1]
+ggcoxzph((cox.zph(cd4_mod)))[2]
+ggcoxzph((cox.zph(cd4_mod)))[3]
+ggcoxzph((cox.zph(cd4_mod)))[4]
+ggcoxzph((cox.zph(cd4_mod)))[5]
+ggcoxzph((cox.zph(cd4_mod)))[6]
+ggcoxzph((cox.zph(cd4_mod)))[7]
+ggcoxzph((cox.zph(cd4_mod)))[8]
+
+```
+
+* The only variable for which the cox proportional hazard assumption seems to hold is the pk-enhancer variable in both models (although the Schoenfeld test is barely non-significant in the CD4-model).

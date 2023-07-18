@@ -1,107 +1,18 @@
-In this markdown, I’ll demonstrate how to clean the data for a Cox
-regression with time-varying covarites. The data cleaning is arguably
+Effectiveness of HIV treatment combinations - Cox regression with
+time-varying covariates feat. `data.table`
+================
+Brandon Hao, Emmanuel Mnatzaganian, Marcus Di Sipio, Guolin Yu
+2023-05-25
+
+In this markdown, we’ll demonstrate how to clean the data for a Cox
+regression with time-varying covariates. The data cleaning is arguably
 the most difficult part of the the analysis and we’ll make plenty use of
-`data.table`’s convenient group-wise operations! I’ll also demonstrate
-the process of fitting the Cox regression model and checking that if the
+`data.table`’s convenient group-wise operations! We’ll also demonstrate
+the process of fitting the Cox regression model and checking if the
 proportional hazards assumption of the model is met.
 
 Without further ado, let’s load in the necessary packages and read in
 the data.
-
-``` r
-# Install and load libraries 
-packages <- c('tidyverse', 'data.table', 'survival', 'DataExplorer', 'survsim', 'broom', 'survminer')
-
-installed_packages <- packages %in% rownames(installed.packages())
-
-if (any(installed_packages == FALSE)) {
-  install.packages(packages[!installed_packages])
-}
-
-invisible(lapply(packages, require, character.only = TRUE))
-```
-
-    ## Loading required package: tidyverse
-
-    ## Warning: package 'tidyverse' was built under R version 4.2.3
-
-    ## Warning: package 'ggplot2' was built under R version 4.2.3
-
-    ## Warning: package 'readr' was built under R version 4.2.3
-
-    ## Warning: package 'lubridate' was built under R version 4.2.3
-
-    ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
-    ## ✔ dplyr     1.1.0     ✔ readr     2.1.4
-    ## ✔ forcats   1.0.0     ✔ stringr   1.5.0
-    ## ✔ ggplot2   3.4.2     ✔ tibble    3.1.8
-    ## ✔ lubridate 1.9.2     ✔ tidyr     1.3.0
-    ## ✔ purrr     1.0.1
-
-    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
-    ## ✖ dplyr::filter() masks stats::filter()
-    ## ✖ dplyr::lag()    masks stats::lag()
-    ## ℹ Use the ]8;;http://conflicted.r-lib.org/conflicted package]8;; to force all conflicts to become errors
-    ## Loading required package: data.table
-    ## 
-    ## 
-    ## Attaching package: 'data.table'
-    ## 
-    ## 
-    ## The following objects are masked from 'package:lubridate':
-    ## 
-    ##     hour, isoweek, mday, minute, month, quarter, second, wday, week,
-    ##     yday, year
-    ## 
-    ## 
-    ## The following objects are masked from 'package:dplyr':
-    ## 
-    ##     between, first, last
-    ## 
-    ## 
-    ## The following object is masked from 'package:purrr':
-    ## 
-    ##     transpose
-    ## 
-    ## 
-    ## Loading required package: survival
-    ## 
-    ## Loading required package: DataExplorer
-
-    ## Warning: package 'DataExplorer' was built under R version 4.2.3
-
-    ## Loading required package: survsim
-
-    ## Warning: package 'survsim' was built under R version 4.2.3
-
-    ## Loading required package: eha
-    ## Loading required package: statmod
-
-    ## Warning: package 'statmod' was built under R version 4.2.3
-
-    ## Loading required package: broom
-
-    ## Warning: package 'broom' was built under R version 4.2.3
-
-    ## Loading required package: survminer
-    ## Loading required package: ggpubr
-
-    ## Warning: package 'ggpubr' was built under R version 4.2.3
-
-    ## 
-    ## Attaching package: 'survminer'
-    ## 
-    ## The following object is masked from 'package:survival':
-    ## 
-    ##     myeloma
-
-``` r
-# Set file paths  
-if (!dir.exists('output')) dir.create(file.path('output'))
-
-# Read HIV data
-hiv <- file.path(r'{../input/HealthGymV2_CbdrhDatathon_ART4HIV.csv}') %>% fread()
-```
 
 Let’s have a look at our dataset.
 
@@ -244,22 +155,22 @@ Just do some quick automated EDA.
 hiv %>% plot_bar(by = 'ethnic', nrow = 4, title = 'EDA - Ethnicity')
 ```
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-1-1.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
 
 ``` r
 hiv %>% plot_bar(by = 'gender', nrow = 4, title = 'EDA - Gender')
 ```
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-1-2.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-1-2.png)<!-- -->
 
 ``` r
 hiv %>% plot_bar(by = 'base_drug_comb', nrow = 4, title = 'EDA - Drug Combo')
 ```
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-1-3.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-1-3.png)<!-- -->
 
-Let’s move forward to analysis - let’s relevel some variables for later
-analysis.
+Let’s move forward to the analysis - let’s relevel some variables for
+later analysis.
 
 ``` r
 # Re-level some variables
@@ -410,7 +321,7 @@ cols_keep = c('id', 'time', 'vl', 'cd4', 'relcd4', 'gender', 'ethnic',
 hiv_cleaned <- hiv_trans[, ..cols_keep]
 
 # Save the processed data frame
-fwrite(hiv_cleaned, file.path('output', "processed_data_hiv.csv"))
+fwrite(hiv_cleaned, file.path('..', 'output', "processed_data_hiv.csv"))
 ```
 
 Factorise the non-factor columns of the cleaned dataset.
@@ -549,7 +460,7 @@ vl_final <- vl_final[, event := fifelse(stop == first_event, TRUE, FALSE)] %>%
   distinct(id, event, .keep_all = TRUE)
 ```
 
-Repeat the same process for CD4 model.
+Repeat the same process for the CD4 model.
 
 ``` r
 # For more details see code above 
@@ -581,9 +492,9 @@ cd4_final <- cd4_final[, event := fifelse(stop == first_event, TRUE, FALSE)] %>%
   distinct(id, event, .keep_all = TRUE)
 ```
 
-# Build Cox model!!!!!!!
+# Build Cox model
 
-Let’s build time-varying Cox model starting with Viral load model.
+Let’s build a time-varying Cox model starting with the viral load model.
 
 ``` r
 # Build time-varying Cox model for VL
@@ -591,7 +502,7 @@ vl_mod <- coxph(Surv(start, stop, event) ~ relcd4 + gender + ethnic + nrti_regim
 
 # Display results
 results <- tidy(vl_mod, conf.int = TRUE, exp = T) 
-results %>% fwrite(file.path('output', 'vl_results.csv'))
+results %>% fwrite(file.path('..', 'output', 'vl_results.csv'))
 summary(vl_mod)
 ```
 
@@ -705,10 +616,10 @@ sjPlot::plot_model(vl_mod)
     ## Model matrix is rank deficient. Parameters `ethnicasian, pi_regimenrtv,
     ##   pi_regimendrv + lpv` were not estimable.
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 ``` r
-ggsave(file.path('output', 'vl_results_image.png'))
+ggsave(file.path('..', 'output', 'vl_results_image.png'))
 ```
 
     ## Saving 7 x 5 in image
@@ -801,8 +712,8 @@ vl_mod
     ## Likelihood ratio test=1703  on 24 df, p=< 2.2e-16
     ## n= 7620, number of events= 5612
 
-It’s seems like the cox proportional hazards assumption does not hold
-for the VL-model:
+It seems like the cox proportional hazards assumption does not hold for
+the VL-model:
 
 ``` r
 ggcoxzph((cox.zph(vl_mod)))[1]
@@ -810,7 +721,7 @@ ggcoxzph((cox.zph(vl_mod)))[1]
 
     ## $`1`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(vl_mod)))[2]
@@ -818,7 +729,7 @@ ggcoxzph((cox.zph(vl_mod)))[2]
 
     ## $`2`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-16-2.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-16-2.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(vl_mod)))[3]
@@ -826,7 +737,7 @@ ggcoxzph((cox.zph(vl_mod)))[3]
 
     ## $`3`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-16-3.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-16-3.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(vl_mod)))[4]
@@ -834,7 +745,7 @@ ggcoxzph((cox.zph(vl_mod)))[4]
 
     ## $`4`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-16-4.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-16-4.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(vl_mod)))[5]
@@ -842,7 +753,7 @@ ggcoxzph((cox.zph(vl_mod)))[5]
 
     ## $`5`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-16-5.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-16-5.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(vl_mod)))[6]
@@ -850,7 +761,7 @@ ggcoxzph((cox.zph(vl_mod)))[6]
 
     ## $`6`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-16-6.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-16-6.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(vl_mod)))[7]
@@ -858,7 +769,7 @@ ggcoxzph((cox.zph(vl_mod)))[7]
 
     ## $`7`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-16-7.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-16-7.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(vl_mod)))[8]
@@ -866,9 +777,9 @@ ggcoxzph((cox.zph(vl_mod)))[8]
 
     ## $`8`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-16-8.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-16-8.png)<!-- -->
 
-Let’s build time-varying Cox model starting with CD4 model.
+Let’s build a time-varying Cox model starting with the CD4 model.
 
 ``` r
 # Build time-varying Cox model for CD4
@@ -876,7 +787,7 @@ cd4_mod <- coxph(Surv(start, stop, event) ~ vl + gender + ethnic + nrti_regimen 
 
 # Display results
 results <- tidy(cd4_mod, conf.int = TRUE, exp = T) 
-results %>% fwrite(file.path('output', 'cd4_results.csv'))
+results %>% fwrite(file.path('..', 'output', 'cd4_results.csv'))
 summary(cd4_mod)
 ```
 
@@ -990,10 +901,10 @@ sjPlot::plot_model(cd4_mod)
     ## Model matrix is rank deficient. Parameters `pi_regimendrv + lpv` were
     ##   not estimable.
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-17-1.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 
 ``` r
-ggsave(file.path('output', 'cd4_results_image.png'))
+ggsave(file.path('..', 'output', 'cd4_results_image.png'))
 ```
 
     ## Saving 7 x 5 in image
@@ -1017,8 +928,8 @@ results
     ## 10 pi_regime…    1.12    1.10e-1   1.05e-1     1.09  2.75e- 1    0.913     1.38 
     ## # ℹ 17 more rows
 
-It’s seems like the cox proportional hazards assumption does not hold
-also for the CD4-model:
+It seems like the cox proportional hazards assumption does not hold also
+for the CD4-model:
 
 ``` r
 ggcoxzph((cox.zph(cd4_mod)))[1]
@@ -1026,7 +937,7 @@ ggcoxzph((cox.zph(cd4_mod)))[1]
 
     ## $`1`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-18-1.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-18-1.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(cd4_mod)))[2]
@@ -1034,7 +945,7 @@ ggcoxzph((cox.zph(cd4_mod)))[2]
 
     ## $`2`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-18-2.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-18-2.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(cd4_mod)))[3]
@@ -1042,7 +953,7 @@ ggcoxzph((cox.zph(cd4_mod)))[3]
 
     ## $`3`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-18-3.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-18-3.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(cd4_mod)))[4]
@@ -1050,7 +961,7 @@ ggcoxzph((cox.zph(cd4_mod)))[4]
 
     ## $`4`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-18-4.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-18-4.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(cd4_mod)))[5]
@@ -1058,7 +969,7 @@ ggcoxzph((cox.zph(cd4_mod)))[5]
 
     ## $`5`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-18-5.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-18-5.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(cd4_mod)))[6]
@@ -1066,7 +977,7 @@ ggcoxzph((cox.zph(cd4_mod)))[6]
 
     ## $`6`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-18-6.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-18-6.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(cd4_mod)))[7]
@@ -1074,7 +985,7 @@ ggcoxzph((cox.zph(cd4_mod)))[7]
 
     ## $`7`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-18-7.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-18-7.png)<!-- -->
 
 ``` r
 ggcoxzph((cox.zph(cd4_mod)))[8]
@@ -1082,8 +993,8 @@ ggcoxzph((cox.zph(cd4_mod)))[8]
 
     ## $`8`
 
-![](Cox-regression-with-time-varying-covariates_files/figure-markdown_github/unnamed-chunk-18-8.png)
+![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-18-8.png)<!-- -->
 
--   The only variable for which the cox proportional hazard assumption
-    seems to hold is the pk-enhancer variable in both models (although
-    the Schoenfeld test is barely non-significant in the CD4-model).
+- The only variable for which the cox proportional hazard assumption
+  seems to hold is the pk-enhancer variable in both models (although the
+  Schoenfeld test is barely non-significant in the CD4-model).

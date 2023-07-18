@@ -5,7 +5,7 @@ Brandon Hao, Emmanuel Mnatzaganian, Marcus Di Sipio, Guolin Yu
 2023-05-25
 
 In this markdown, we’ll demonstrate how to clean the data for a Cox
-regression with time-varying covariates. The data cleaning is arguably
+regression with time-varying covarites. The data cleaning is arguably
 the most difficult part of the the analysis and we’ll make plenty use of
 `data.table`’s convenient group-wise operations! We’ll also demonstrate
 the process of fitting the Cox regression model and checking if the
@@ -13,6 +13,101 @@ proportional hazards assumption of the model is met.
 
 Without further ado, let’s load in the necessary packages and read in
 the data.
+
+``` r
+# Install and load libraries 
+packages <- c('tidyverse', 'data.table', 'survival', 'DataExplorer', 'survsim', 'broom', 'survminer')
+
+installed_packages <- packages %in% rownames(installed.packages())
+
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+
+invisible(lapply(packages, require, character.only = TRUE))
+```
+
+    ## Loading required package: tidyverse
+
+    ## Warning: package 'tidyverse' was built under R version 4.2.3
+
+    ## Warning: package 'ggplot2' was built under R version 4.2.3
+
+    ## Warning: package 'readr' was built under R version 4.2.3
+
+    ## Warning: package 'lubridate' was built under R version 4.2.3
+
+    ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+    ## ✔ dplyr     1.1.0     ✔ readr     2.1.4
+    ## ✔ forcats   1.0.0     ✔ stringr   1.5.0
+    ## ✔ ggplot2   3.4.2     ✔ tibble    3.1.8
+    ## ✔ lubridate 1.9.2     ✔ tidyr     1.3.0
+    ## ✔ purrr     1.0.1
+
+    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ## ✖ dplyr::filter() masks stats::filter()
+    ## ✖ dplyr::lag()    masks stats::lag()
+    ## ℹ Use the ]8;;http://conflicted.r-lib.org/conflicted package]8;; to force all conflicts to become errors
+    ## Loading required package: data.table
+    ## 
+    ## 
+    ## Attaching package: 'data.table'
+    ## 
+    ## 
+    ## The following objects are masked from 'package:lubridate':
+    ## 
+    ##     hour, isoweek, mday, minute, month, quarter, second, wday, week,
+    ##     yday, year
+    ## 
+    ## 
+    ## The following objects are masked from 'package:dplyr':
+    ## 
+    ##     between, first, last
+    ## 
+    ## 
+    ## The following object is masked from 'package:purrr':
+    ## 
+    ##     transpose
+    ## 
+    ## 
+    ## Loading required package: survival
+    ## 
+    ## Loading required package: DataExplorer
+
+    ## Warning: package 'DataExplorer' was built under R version 4.2.3
+
+    ## Loading required package: survsim
+
+    ## Warning: package 'survsim' was built under R version 4.2.3
+
+    ## Loading required package: eha
+    ## Loading required package: statmod
+
+    ## Warning: package 'statmod' was built under R version 4.2.3
+
+    ## Loading required package: broom
+
+    ## Warning: package 'broom' was built under R version 4.2.3
+
+    ## Loading required package: survminer
+    ## Loading required package: ggpubr
+
+    ## Warning: package 'ggpubr' was built under R version 4.2.3
+
+    ## 
+    ## Attaching package: 'survminer'
+    ## 
+    ## The following object is masked from 'package:survival':
+    ## 
+    ##     myeloma
+
+``` r
+# Set file paths  
+if (!dir.exists('output')) dir.create(file.path('output'))
+
+# Read HIV data
+hiv <- file.path(r'{../input/HealthGymV2_CbdrhDatathon_ART4HIV.csv}') %>% fread()
+```
 
 Let’s have a look at our dataset.
 
@@ -321,7 +416,7 @@ cols_keep = c('id', 'time', 'vl', 'cd4', 'relcd4', 'gender', 'ethnic',
 hiv_cleaned <- hiv_trans[, ..cols_keep]
 
 # Save the processed data frame
-fwrite(hiv_cleaned, file.path('..', 'output', "processed_data_hiv.csv"))
+fwrite(hiv_cleaned, file.path('output', "processed_data_hiv.csv"))
 ```
 
 Factorise the non-factor columns of the cleaned dataset.
@@ -502,7 +597,7 @@ vl_mod <- coxph(Surv(start, stop, event) ~ relcd4 + gender + ethnic + nrti_regim
 
 # Display results
 results <- tidy(vl_mod, conf.int = TRUE, exp = T) 
-results %>% fwrite(file.path('..', 'output', 'vl_results.csv'))
+results %>% fwrite(file.path('output', 'vl_results.csv'))
 summary(vl_mod)
 ```
 
@@ -619,7 +714,7 @@ sjPlot::plot_model(vl_mod)
 ![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 ``` r
-ggsave(file.path('..', 'output', 'vl_results_image.png'))
+ggsave(file.path('output', 'vl_results_image.png'))
 ```
 
     ## Saving 7 x 5 in image
@@ -787,7 +882,7 @@ cd4_mod <- coxph(Surv(start, stop, event) ~ vl + gender + ethnic + nrti_regimen 
 
 # Display results
 results <- tidy(cd4_mod, conf.int = TRUE, exp = T) 
-results %>% fwrite(file.path('..', 'output', 'cd4_results.csv'))
+results %>% fwrite(file.path('output', 'cd4_results.csv'))
 summary(cd4_mod)
 ```
 
@@ -904,7 +999,7 @@ sjPlot::plot_model(cd4_mod)
 ![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 
 ``` r
-ggsave(file.path('..', 'output', 'cd4_results_image.png'))
+ggsave(file.path('output', 'cd4_results_image.png'))
 ```
 
     ## Saving 7 x 5 in image

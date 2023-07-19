@@ -28,7 +28,7 @@ if (any(installed_packages == FALSE)) {
 invisible(lapply(packages, require, character.only = TRUE))
 
 # Set file paths  
-if (!dir.exists('output')) dir.create(file.path('output'))
+if (!dir.exists('../output')) dir.create(file.path('../output'))
 
 # Read HIV data
 hiv <- file.path(r'{../input/HealthGymV2_CbdrhDatathon_ART4HIV.csv}') %>% fread()
@@ -341,7 +341,7 @@ cols_keep = c('id', 'time', 'vl', 'cd4', 'relcd4', 'gender', 'ethnic',
 hiv_cleaned <- hiv_trans[, ..cols_keep]
 
 # Save the processed data frame
-fwrite(hiv_cleaned, file.path('output', "processed_data_hiv.csv"))
+fwrite(hiv_cleaned, file.path('../output', 'processed_data_hiv.csv'))
 ```
 
 Factorise the non-factor columns of the cleaned dataset.
@@ -522,7 +522,7 @@ vl_mod <- coxph(Surv(start, stop, event) ~ relcd4 + gender + ethnic + nrti_regim
 
 # Display results
 results <- tidy(vl_mod, conf.int = TRUE, exp = T) 
-results %>% fwrite(file.path('output', 'vl_results.csv'))
+results %>% fwrite(file.path('../output', 'vl_results.csv'))
 summary(vl_mod)
 ```
 
@@ -639,7 +639,7 @@ sjPlot::plot_model(vl_mod)
 ![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 ``` r
-ggsave(file.path('output', 'vl_results_image.png'))
+ggsave(file.path('../output', 'vl_results_image.png'))
 ```
 
     ## Saving 7 x 5 in image
@@ -807,7 +807,7 @@ cd4_mod <- coxph(Surv(start, stop, event) ~ vl + gender + ethnic + nrti_regimen 
 
 # Display results
 results <- tidy(cd4_mod, conf.int = TRUE, exp = T) 
-results %>% fwrite(file.path('output', 'cd4_results.csv'))
+results %>% fwrite(file.path('../output', 'cd4_results.csv'))
 summary(cd4_mod)
 ```
 
@@ -924,7 +924,7 @@ sjPlot::plot_model(cd4_mod)
 ![](Cox-regression-with-time-varying-covariates_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 
 ``` r
-ggsave(file.path('output', 'cd4_results_image.png'))
+ggsave(file.path('../output', 'cd4_results_image.png'))
 ```
 
     ## Saving 7 x 5 in image

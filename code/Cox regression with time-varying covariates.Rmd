@@ -7,7 +7,7 @@ date: "2023-05-25"
 
 ```{r setup, include=FALSE}
 # Set working directory
-knitr::opts_chunk$set(root.dir = r"{Datathon_team_1}")
+knitr::opts_chunk$set(echo = TRUE)
 
 ```
 
